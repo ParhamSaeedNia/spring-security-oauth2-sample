@@ -33,10 +33,17 @@ public class SwaggerConfig {
                                 - Resource Server with JWT validation
                                 
                                 ## Authentication Flow:
-                                1. Get authorization code: `GET /oauth2/authorize?client_id=api-client&response_type=code&redirect_uri=http://localhost:8080/login/oauth2/code/api-client&scope=read write`
-                                2. Exchange code for tokens: `POST /api/auth/token?code={code}&client_id=api-client&redirect_uri=http://localhost:8080/login/oauth2/code/api-client`
-                                3. Use access token to access protected resources: `GET /api/resource/data`
-                                4. Refresh token: `POST /api/auth/refresh`
+                                1. Generate CAPTCHA: `GET /api/captcha/generate` - Get a CAPTCHA ID and value
+                                2. Register: `POST /api/auth/register` - Register a new user (requires CAPTCHA)
+                                3. Login: `POST /api/auth/login` - Login and get OAuth2 tokens (requires CAPTCHA)
+                                4. Use access token to access protected resources: `GET /api/resource/data`
+                                5. Refresh token: `POST /api/auth/refresh`
+                                
+                                ## CAPTCHA:
+                                - All login and register requests require CAPTCHA validation
+                                - Generate CAPTCHA using `/api/captcha/generate`
+                                - CAPTCHA expires after 5 minutes
+                                - CAPTCHA can only be used once (one-time validation)
                                 
                                 ## Default Credentials:
                                 - Username: `user` / Password: `password`

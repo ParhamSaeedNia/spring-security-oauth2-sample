@@ -42,6 +42,7 @@ public class AuthController {
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
     private final OAuth2AuthorizationService authorizationService;
+    private final ir.bpmellat.springsecurity.service.CaptchaService captchaService;
     
     @Value("${server.servlet.context-path:}")
     private String contextPath;
@@ -53,22 +54,37 @@ public class AuthController {
             TokenGenerationService tokenGenerationService,
             UserService userService,
             AuthenticationManager authenticationManager,
-            OAuth2AuthorizationService authorizationService) {
+            OAuth2AuthorizationService authorizationService,
+            ir.bpmellat.springsecurity.service.CaptchaService captchaService) {
         this.tokenGenerationService = tokenGenerationService;
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.authorizationService = authorizationService;
+        this.captchaService = captchaService;
     }
     
     @PostMapping("/register")
     @Operation(summary = "Register a new user", 
-               description = "Creates a new user account. Returns user information without tokens. Use /login to get tokens.")
+               description = "Creates a new user account. Requires CAPTCHA validation. Returns user information without tokens. Use /login to get tokens.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "201", description = "User successfully registered"),
-        @ApiResponse(responseCode = "400", description = "Invalid input or username/email already exists")
+        @ApiResponse(responseCode = "400", description = "Invalid input, username/email already exists, or invalid CAPTCHA")
     })
     public ResponseEntity<Map<String, Object>> register(
             @Valid @RequestBody RegisterRequest request) {
+        // Validate CAPTCHA
+        if (request.captchaId == null || request.captchaValue == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "CAPTCHA is required. Please generate a CAPTCHA first using /api/captcha/generate");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+        
+        if (!captchaService.validateCaptcha(request.captchaId, request.captchaValue)) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Invalid or expired CAPTCHA. Please generate a new one using /api/captcha/generate");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+        
         try {
             User user = userService.register(request.username, request.password, request.email);
             
@@ -88,15 +104,29 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "Login and get OAuth2 tokens", 
                description = "Authenticates user with username and password, then generates OAuth2 access and refresh tokens. " +
-                           "Tokens are returned in the response body and set as HTTP-only cookies. " +
+                           "Requires CAPTCHA validation. Tokens are returned in the response body and set as HTTP-only cookies. " +
                            "This endpoint handles the OAuth2 flow internally - no need to manually get authorization codes.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Login successful, tokens generated"),
+        @ApiResponse(responseCode = "400", description = "Invalid or missing CAPTCHA"),
         @ApiResponse(responseCode = "401", description = "Invalid credentials")
     })
     public ResponseEntity<Map<String, Object>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
+        // Validate CAPTCHA
+        if (request.captchaId == null || request.captchaValue == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "CAPTCHA is required. Please generate a CAPTCHA first using /api/captcha/generate");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+        
+        if (!captchaService.validateCaptcha(request.captchaId, request.captchaValue)) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Invalid or expired CAPTCHA. Please generate a new one using /api/captcha/generate");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+        
         try {
             // Authenticate user
             Authentication authentication = authenticationManager.authenticate(
@@ -291,6 +321,14 @@ public class AuthController {
         @NotBlank(message = "Password is required")
         @Schema(description = "Password", example = "password", required = true)
         public String password;
+        
+        @NotBlank(message = "CAPTCHA ID is required")
+        @Schema(description = "CAPTCHA ID obtained from /api/captcha/generate", example = "550e8400-e29b-41d4-a716-446655440000", required = true)
+        public String captchaId;
+        
+        @NotBlank(message = "CAPTCHA value is required")
+        @Schema(description = "CAPTCHA value (case-insensitive)", example = "ABC123", required = true)
+        public String captchaValue;
     }
     
     @Schema(description = "Register request")
@@ -307,6 +345,14 @@ public class AuthController {
         @Email(message = "Email should be valid")
         @Schema(description = "Email address", example = "user@example.com", required = true)
         public String email;
+        
+        @NotBlank(message = "CAPTCHA ID is required")
+        @Schema(description = "CAPTCHA ID obtained from /api/captcha/generate", example = "550e8400-e29b-41d4-a716-446655440000", required = true)
+        public String captchaId;
+        
+        @NotBlank(message = "CAPTCHA value is required")
+        @Schema(description = "CAPTCHA value (case-insensitive)", example = "ABC123", required = true)
+        public String captchaValue;
     }
 }
 
