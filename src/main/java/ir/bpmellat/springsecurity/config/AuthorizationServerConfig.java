@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -70,22 +71,51 @@ public class AuthorizationServerConfig {
     @Bean
     @Order(3)
     public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+        RequestMatcher defaultMatcher = request -> {
+            String path = request.getRequestURI();
+            // Exclude paths handled by other security filter chains
+            return !path.startsWith("/api/resource/") && 
+                   !path.equals("/api/auth/me") &&
+                   !path.startsWith("/oauth2/") &&
+                   !path.startsWith("/.well-known/");
+        };
+        
         http
+                .securityMatcher(defaultMatcher)
                 .authorizeHttpRequests((authorize) -> authorize
-                        .requestMatchers("/login", "/error", "/webjars/**", "/swagger-ui/**", "/api-docs/**", "/h2-console/**").permitAll()
+                        .requestMatchers("/login", "/error", "/webjars/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**", "/h2-console/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/oauth2/**", "/.well-known/**").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
                         .loginPage("/login")
                         .permitAll()
                 )
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/api/**"));
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/api/**", "/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**"));
         
         // Allow H2 console frames
         http.headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()));
+        
+        return http.build();
+    }
+    
+    @Bean
+    @Order(4)
+    public SecurityFilterChain authMeSecurityFilterChain(
+            HttpSecurity http,
+            JwtDecoder jwtDecoder,
+            org.springframework.security.oauth2.server.resource.web.BearerTokenResolver bearerTokenResolver) throws Exception {
+        http
+                .securityMatcher("/api/auth/me")
+                .authorizeHttpRequests((authorize) -> authorize
+                        .anyRequest().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.decoder(jwtDecoder))
+                        .bearerTokenResolver(bearerTokenResolver)
+                )
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/auth/me"));
         
         return http.build();
     }

@@ -256,15 +256,28 @@ public class AuthController {
     }
     
     @GetMapping("/me")
-    @Operation(summary = "Get current user", description = "Returns information about the currently authenticated user")
+    @Operation(summary = "Get current user", description = "Returns information about the currently authenticated user. Requires a valid access token in Authorization header or cookie.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "User information retrieved"),
-        @ApiResponse(responseCode = "401", description = "Unauthorized")
+        @ApiResponse(responseCode = "401", description = "Unauthorized - Missing or invalid token")
     })
     public ResponseEntity<Map<String, Object>> getCurrentUser(Authentication authentication) {
+        if (authentication == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Authentication required. Please provide a valid access token.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+        }
+        
         Map<String, Object> userInfo = new HashMap<>();
         userInfo.put("name", authentication.getName());
         userInfo.put("authorities", authentication.getAuthorities());
+        
+        if (authentication.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
+            userInfo.put("subject", jwt.getSubject());
+            userInfo.put("token_issued_at", jwt.getIssuedAt());
+            userInfo.put("token_expires_at", jwt.getExpiresAt());
+        }
+        
         return ResponseEntity.ok(userInfo);
     }
     
